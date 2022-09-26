@@ -1,6 +1,4 @@
 #pragma once
-
-
 enum class MOVETYPE
 {
     NONE,
@@ -17,10 +15,10 @@ enum class PACKET_TYPE
     MOVE,
     END
 };
-#pragma pack(push, 1)
+
 typedef struct move_packet {
-    short size = sizeof(move_packet);
-    char m_type;
+    short size ;
+    char type;
     char id;
     char packet_type = static_cast<char>(PACKET_TYPE::MOVE);
     int x;
@@ -28,14 +26,14 @@ typedef struct move_packet {
 }MOVEPACKET;
 
 typedef struct start_packet {
-    short size = sizeof(start_packet);
+    short size;
     char id;
     char packet_type = static_cast<char>(PACKET_TYPE::START);
 }STARTPACKET;
 
 typedef struct end_packet {
-    short size = sizeof(end_packet);
+    short size;
     char id;
     char packet_type = static_cast<char>(PACKET_TYPE::END);
 }ENDPACKET;
-#pragma pack(pop)
+

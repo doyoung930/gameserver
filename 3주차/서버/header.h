@@ -10,7 +10,7 @@ using namespace std;
 #pragma comment (lib, "WS2_32.LIB")
 
 const short SERVER_PORT = 4000;
-
+MOVEPACKET player_move;
 
 // 에러검사
 void err_display(const char* msg)

@@ -25,7 +25,7 @@ public:
 
 // SESSION
 class SESSION;
-unordered_map <long long, SESSION> clients;
+unordered_map <long long, SESSION*> clients;
 class SESSION {
 private:
     int _id;
@@ -74,9 +74,10 @@ SESSION::~SESSION() { if (_socket) closesocket(_socket); }
 void SESSION::do_recv()
 {
     DWORD recv_flag = 0;
-    memset(&_recv_over, 0, sizeof(_recv_over));
+    ZeroMemory(&_recv_over, sizeof(_recv_over));
+    // memset(&_recv_over, 0, sizeof(_recv_over));
     _recv_over.hEvent = reinterpret_cast<HANDLE>(_id);
-    WSARecv(_socket, &_recv_wsabuf, 1, 0, &recv_flag, &_recv_over, recv_callback);
+    WSARecv(_socket, &_recv_wsabuf, 1, 0, &recv_flag, &_recv_over, SESSION::recv_callback);
 }
 
 void SESSION::do_send(char s_id, char packet_type, char size, char* addr)
@@ -95,90 +96,89 @@ void SESSION::send_callback(DWORD err, DWORD num_byte, LPWSAOVERLAPPED send_over
 void SESSION::recv_callback(DWORD err, DWORD num_byte, LPWSAOVERLAPPED recv_over, DWORD recv_flag)
 {
     cout << num_byte << endl;
-    int s_id = reinterpret_cast<int>(recv_over->hEvent);
-    char* p = clients[s_id]._recv_buf;
+    int s_id = reinterpret_cast<long long>(recv_over->hEvent);
+    char* p = clients[s_id]->_recv_buf;
 
-    while (p < clients[s_id]._recv_buf + num_byte) {
+    while (p < clients[s_id]->_recv_buf + num_byte) {
         switch (static_cast<PACKET_TYPE>(*(p + 1)))
         {
         case PACKET_TYPE::START:
-            clients[s_id].m_player_start.id = reinterpret_cast<STARTPACKET*>(p)->id;
+            clients[s_id]->m_player_start.id = reinterpret_cast<STARTPACKET*>(p)->id;
 
             // 정보 주기
             for (auto& c : clients) {
-                c.second.do_send(s_id, (char)PACKET_TYPE::START, clients[s_id].m_player_start.size,
-                    (char*)&clients[s_id].m_player_start);
+                c.second->do_send(s_id, (char)PACKET_TYPE::START, clients[s_id]->m_player_start.size, (char*)&clients[s_id]->m_player_start);
             }
             for (auto& c : clients) {
-                clients[s_id].do_send(c.first, (char)PACKET_TYPE::MOVE, clients[s_id].m_player_move.size,
-                    (char*)&clients[s_id].m_player_move);
+                clients[s_id]->do_send(c.first, (char)PACKET_TYPE::MOVE, clients[s_id]->m_player_move.size,(char*)&clients[s_id]->m_player_move);
             }
-            p = p + clients[s_id].m_player_start.size;
+            p = p + clients[s_id]->m_player_start.size;
 
             cout << "시작" << endl;
             break;
         case PACKET_TYPE::MOVE:
             // map에 플레이어 움직임 저장
-            clients[s_id].m_player_move.id = reinterpret_cast<MOVEPACKET*>(p)->id;
-            clients[s_id].m_player_move.x = reinterpret_cast<MOVEPACKET*>(p)->x;
-            clients[s_id].m_player_move.y = reinterpret_cast<MOVEPACKET*>(p)->y;
-            clients[s_id].m_player_move.type = reinterpret_cast<MOVEPACKET*>(p)->type;
+            clients[s_id]->m_player_move.id = reinterpret_cast<MOVEPACKET*>(p)->id;
+            clients[s_id]->m_player_move.x = reinterpret_cast<MOVEPACKET*>(p)->x;
+            clients[s_id]->m_player_move.y = reinterpret_cast<MOVEPACKET*>(p)->y;
+            clients[s_id]->m_player_move.m_type = reinterpret_cast<MOVEPACKET*>(p)->m_type;
 
             // 플레이어 이동
-            if (clients[s_id].m_player_move.type == static_cast<char>(MOVETYPE::LEFT))
+            if (clients[s_id]->m_player_move.m_type == static_cast<char>(MOVETYPE::LEFT))
             {
-                if (0 < clients[s_id].m_player_move.x) {
-                    clients[s_id].m_player_move.x--;
+                if (0 < clients[s_id]->m_player_move.x) {
+                    clients[s_id]->m_player_move.x--;
                 }
             }
-            if (clients[s_id].m_player_move.type == static_cast<char>(MOVETYPE::RIGHT))
+            if (clients[s_id]->m_player_move.m_type == static_cast<char>(MOVETYPE::RIGHT))
             {
-                if (7 > clients[s_id].m_player_move.x) {
-                    clients[s_id].m_player_move.x++;
+                if (7 > clients[s_id]->m_player_move.x) {
+                    clients[s_id]->m_player_move.x++;
                 }
             }
-            if (clients[s_id].m_player_move.type == static_cast<char>(MOVETYPE::UP))
+            if (clients[s_id]->m_player_move.m_type == static_cast<char>(MOVETYPE::UP))
             {
-                if (0 < clients[s_id].m_player_move.y) {
-                    clients[s_id].m_player_move.y--;
+                if (0 < clients[s_id]->m_player_move.y) {
+                    clients[s_id]->m_player_move.y--;
                 }
             }
-            if (clients[s_id].m_player_move.type == static_cast<char>(MOVETYPE::DOWN))
+            if (clients[s_id]->m_player_move.m_type == static_cast<char>(MOVETYPE::DOWN))
             {
-                if (7 > clients[s_id].m_player_move.y) {
-                    clients[s_id].m_player_move.y++;
+                if (7 > clients[s_id]->m_player_move.y) {
+                    clients[s_id]->m_player_move.y++;
                 }
             }
 
-            cout << "Player ID [" << s_id << "] 좌표 x :" << clients[s_id].m_player_move.x << " y : " << clients[s_id].m_player_move.y << endl;
+            cout << "Player ID [" << s_id << "] 좌표 x :" << clients[s_id]->m_player_move.x << " y : " << clients[s_id]->m_player_move.y << endl;
 
             // 바뀐 정보 send
             for (auto& c : clients)
             {
-                c.second.do_send(s_id, (char)PACKET_TYPE::MOVE, clients[s_id].m_player_move.size, (char*)clients[s_id].m_player_move.size);
+                c.second->do_send(s_id, (char)PACKET_TYPE::MOVE, clients[s_id]->m_player_move.size, (char*)&clients[s_id]->m_player_move);
             }
-            p = p + clients[s_id].m_player_move.size;
+            p = p + clients[s_id]->m_player_move.size;
 
             break;
         case PACKET_TYPE::END:
-            clients[s_id].m_player_end.id = reinterpret_cast<ENDPACKET*>(p)->id;
+            clients[s_id]->m_player_end.id = reinterpret_cast<ENDPACKET*>(p)->id;
 
             for (auto& c : clients)
             {
-                c.second.do_send(s_id, (char)PACKET_TYPE::END, clients[s_id].m_player_end.size, (char*)&clients[s_id].m_player_end);
+                c.second->do_send(s_id, (char)PACKET_TYPE::END, clients[s_id]->m_player_end.size, (char*)&clients[s_id]->m_player_end);
             }
-            clients[s_id].DetroySession = true;
+            p = p + clients[s_id]->m_player_end.size;
+            clients[s_id]->DetroySession = true;
             cout << "Player [ " << s_id << " ] 로그아웃" << endl;
             break;
         }
     }
-    if (clients[s_id].DetroySession)
+    if (clients[s_id]->DetroySession)
     {
-        delete& clients[s_id];
+        delete clients[s_id];
         clients.erase(s_id);
     }
     if (clients.find(s_id) != clients.end())
-        clients[s_id].do_recv();
+        clients[s_id]->do_recv();
 }
 
 //**********
@@ -208,16 +208,24 @@ int main()
         return false;
     }
     SOCKADDR_IN cl_addr;
-    int addr_size = sizeof(cl_addr);
+    INT addr_size; //= sizeof(cl_addr)
     for (int i = 1; ; ++i) {
         //&addr_size 반드시 포인터를 넘겨 주어야함. 서버가 여기까지 썻다 서버에서 사용한 데이터양을 앎.
         SOCKET c_socket = WSAAccept(s_socket, reinterpret_cast<sockaddr*>(&cl_addr), &addr_size, NULL, NULL);
-        if (c_socket == INVALID_SOCKET) err_display("accept()");
-        else cout << "연결성공" << endl;
+        if (c_socket == INVALID_SOCKET) {
+            err_display("accept()");
+        }
+        else
+            cout << "연결성공" << endl;
+        int tcp_option = 1;
+        setsockopt(c_socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&tcp_option), sizeof(tcp_option));
+        SESSION* p = new SESSION(i, c_socket);
         clients.try_emplace(i, i, clients);
-        clients[i].SESSION::do_recv();
+        clients[i]->do_send((char)i, clients[i]->m_player_start.packet_type, clients[i]->m_player_start.size, (char*)&clients[i]->m_player_start);
+        clients[i]->do_recv();
     }
-
+    //while ()
+      //  SleepEx(100, true);
 
     closesocket(s_socket);
     WSACleanup();
