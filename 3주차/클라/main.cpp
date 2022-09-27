@@ -46,7 +46,7 @@ SOCKET s_socket;
 char m_temp_buf[BUFSIZE] = { 0, };
 int option;
 int _id;
-
+int m_tcp_option;
 //콜백 함수
 void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD falgs);
 void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD falgs);
@@ -89,14 +89,32 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance, _In_opt_ HINSTANCE hPrevInstance
 		hInstance,
 		NULL
 	);
-
-
-
 	// 윈도우 출력
 	ShowWindow(hWnd, nCmdShow);
 	UpdateWindow(hWnd);
+	//hdc = GetDC(hWnd);
+	// 서버주소 받기
+	wcout.imbue(locale("korean"));
+	cout << "IP주소를 입력하세요:";
+	cin >> SERVER_ADDR;
 
+	// 소켓 선언
+	if (WSAStartup(MAKEWORD(2, 2), &m_WsaData) != 0) return false;
+	m_s_socket = WSASocket(AF_INET, SOCK_STREAM, 0, 0, 0, WSA_FLAG_OVERLAPPED);
+	// 초기화
+	ZeroMemory(&m_server_addr, sizeof(m_server_addr));
+	m_server_addr.sin_family = AF_INET;
+	m_server_addr.sin_port = htons(SERVER_PORT);
+	inet_pton(AF_INET, SERVER_ADDR, &m_server_addr.sin_addr);
 
+	// Connect
+	ret = connect(m_s_socket, reinterpret_cast<sockaddr*>(&m_server_addr), sizeof(m_server_addr));
+	if (ret == SOCKET_ERROR)	err_display("connect()");
+	else		cout << "연결성공" << endl;
+	m_tcp_option = 1;
+	setsockopt(m_s_socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&m_tcp_option), sizeof(m_tcp_option));
+
+	AllRecv();
 
 	// 이벤트 루프 처리
 	while (GetMessage(&Message, 0, 0, 0)) {
@@ -138,7 +156,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
 	PAINTSTRUCT ps;
 	HDC hdc;
-
+	wcout.imbue(locale("korean"));
 	//m_size 초기화
 	m_size = { 100,100,150,150 };
 	// 메시지 처리하기
@@ -159,24 +177,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 		player_move.x = 0;
 		player_move.y = 0;
 
-		// 서버주소 받기
-		wcout.imbue(locale("korean"));
-		cout << "IP주소를 입력하세요:";
-		cin >> SERVER_ADDR;
 
-		// 소켓 선언
-		if (WSAStartup(MAKEWORD(2, 2), &m_WsaData) != 0) return false;
-		m_s_socket = WSASocket(AF_INET, SOCK_STREAM, 0, 0, 0, WSA_FLAG_OVERLAPPED);
-		// 초기화
-		ZeroMemory(&m_server_addr, sizeof(m_server_addr));
-		m_server_addr.sin_family = AF_INET;
-		m_server_addr.sin_port = htons(SERVER_PORT);
-		inet_pton(AF_INET, SERVER_ADDR, &m_server_addr.sin_addr);
 
-		// Connect
-		ret = WSAConnect(m_s_socket, reinterpret_cast<sockaddr*>(&m_server_addr), sizeof(m_server_addr),0,0,0,0);
-		if (ret == SOCKET_ERROR)	err_display("connect()");
-		else		cout << "연결성공" << endl;
 		break;
 
 	case WM_KEYDOWN:
@@ -190,7 +192,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			ZeroMemory(&s_over, sizeof(s_over));
 			ret = WSASend(m_s_socket, &m_sWsaBuf, 1, 0, 0, &s_over, send_callback);
 			if (ret == SOCKET_ERROR) err_display("send()");
-
+			AllRecv();
 			break;
 		case VK_UP:
 			player_move.type = static_cast<char>(MOVETYPE::UP);
@@ -200,17 +202,18 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			ZeroMemory(&s_over, sizeof(s_over));
 			ret = WSASend(m_s_socket, &m_sWsaBuf, 1, 0, 0, &s_over, send_callback);
 			if (ret == SOCKET_ERROR) err_display("send()");
-
+			AllRecv();
 			break;
 		case VK_RIGHT:
 			player_move.type = static_cast<char>(MOVETYPE::RIGHT);
 			player_move.id = _id;
+			player_move.packet_type = static_cast<char>(PACKET_TYPE::MOVE);
 			m_sWsaBuf.buf = reinterpret_cast<char*>(&player_move);
 			m_sWsaBuf.len = player_move.size;
 			ZeroMemory(&s_over, sizeof(s_over));
 			ret = WSASend(m_s_socket, &m_sWsaBuf, 1, 0, 0, &s_over, send_callback);
 			if (ret == SOCKET_ERROR) err_display("send()");
-
+			AllRecv();
 			break;
 		case VK_DOWN:
 			player_move.type = static_cast<char>(MOVETYPE::DOWN);
@@ -220,7 +223,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			ZeroMemory(&s_over, sizeof(s_over));
 			ret = WSASend(m_s_socket, &m_sWsaBuf, 1, 0, 0, &s_over, send_callback);
 			if (ret == SOCKET_ERROR) err_display("send()");
-
+			AllRecv();
 			break;
 		case VK_ESCAPE:
 			m_start_packet.id = _id;
@@ -230,12 +233,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 			ZeroMemory(&s_over, sizeof(s_over));
 			ret = WSASend(m_s_socket, &m_sWsaBuf, 1, 0, 0, &s_over, send_callback);
 			if (ret == SOCKET_ERROR) err_display("SendEnd()");
-
+			AllRecv();
 			break;
 
 			//InvalidateRect(hwnd, NULL, true);
 		}
-		std::cout << "x " << player_move.x << " y " << player_move.y << endl;
+	//	std::cout << "x " << player_move.x << " y " << player_move.y << endl;
 		InvalidateRect(hwnd, NULL, true);
 		break;
 
@@ -258,7 +261,7 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam)
 // 함수
 void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
 {
-	cout << "recv_callback" << endl;
+	cout << "recv_callback" << num_bytes<< endl;
 	char* p = m_temp_buf;
 	while (p < m_temp_buf + num_bytes) {
 		switch (static_cast<PACKET_TYPE>(*(p + 1)))
@@ -267,6 +270,7 @@ void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 		{
 			m_start_packet.id = reinterpret_cast<STARTPACKET*>(p)->id;
 			cout << "ID : " << (int)m_start_packet.id << endl;
+			m_start_packet.size = sizeof(m_start_packet);
 			// 시작 플레이어 정보
 			if (AddPlayer(m_start_packet.id))
 			{
@@ -280,6 +284,7 @@ void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 		case PACKET_TYPE::MOVE:
 		{	
 			int move_id = reinterpret_cast<MOVEPACKET*>(p)->id;
+
 			AddPlayer(move_id);
 
 			m_players[move_id]->x = reinterpret_cast<MOVEPACKET*>(p)->x;
@@ -320,7 +325,7 @@ void CALLBACK recv_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DW
 
 	cout << "recv_callback end" << endl;
 
-	AllRecv();
+	
 }
 
 void CALLBACK send_callback(DWORD err, DWORD num_bytes, LPWSAOVERLAPPED over, DWORD flags)
@@ -369,7 +374,7 @@ bool Send_End()
 // 플레이어 렌더링
 void RenderPlayer(HDC hdc, RECT m_size)
 {
-	HBRUSH myBrush = (HBRUSH)CreateSolidBrush(RGB(100, 100, 0));
+	HBRUSH myBrush = (HBRUSH)CreateSolidBrush(RGB(255, 255, 0));
 	HBRUSH oldBrush = (HBRUSH)SelectObject(hdc, myBrush);
 	Ellipse(hdc, m_size.left + (player_move.x * 50), m_size.top + (player_move.y * 50), m_size.right + (player_move.x * 50), m_size.bottom + (player_move.y * 50));
 	SelectObject(hdc, oldBrush);
