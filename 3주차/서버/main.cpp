@@ -1,5 +1,5 @@
 #include "header.h"
-
+bool down = false;
 class EXP_OVER {
 public:
     WSAOVERLAPPED wsa_over;
@@ -96,7 +96,7 @@ void SESSION::send_callback(DWORD err, DWORD num_byte, LPWSAOVERLAPPED send_over
 void SESSION::recv_callback(DWORD err, DWORD num_byte, LPWSAOVERLAPPED recv_over, DWORD recv_flag)
 {
     cout << num_byte << endl;
-    int s_id = reinterpret_cast<long long>(recv_over->hEvent);
+    int s_id = reinterpret_cast<int>(recv_over->hEvent);
     char* p = clients[s_id]->_recv_buf;
 
     while (p < clients[s_id]->_recv_buf + num_byte) {
@@ -194,7 +194,7 @@ int main()
     ZeroMemory(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_port = htons(SERVER_PORT);
-    server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    server_addr.sin_addr.s_addr =INADDR_ANY;
     ret = bind(s_socket, reinterpret_cast<sockaddr*>(&server_addr), sizeof(server_addr));
     if (ret == SOCKET_ERROR)
     {
@@ -208,8 +208,8 @@ int main()
         return false;
     }
     SOCKADDR_IN cl_addr;
-    INT addr_size; //= sizeof(cl_addr)
-    for (int i = 1; ; ++i) {
+    int addr_size = sizeof(cl_addr);
+    for (int i = 1;  ; ++i) {
         //&addr_size 반드시 포인터를 넘겨 주어야함. 서버가 여기까지 썻다 서버에서 사용한 데이터양을 앎.
         SOCKET c_socket = WSAAccept(s_socket, reinterpret_cast<sockaddr*>(&cl_addr), &addr_size, NULL, NULL);
         if (c_socket == INVALID_SOCKET) {
@@ -220,13 +220,15 @@ int main()
         int tcp_option = 1;
         setsockopt(c_socket, IPPROTO_TCP, TCP_NODELAY, reinterpret_cast<char*>(&tcp_option), sizeof(tcp_option));
         SESSION* p = new SESSION(i, c_socket);
-        clients.try_emplace(i, i, clients);
+        clients.emplace(i, p);
+        //clients.try_emplace(i, i, clients);
         clients[i]->do_send((char)i, clients[i]->m_player_start.packet_type, clients[i]->m_player_start.size, (char*)&clients[i]->m_player_start);
         clients[i]->do_recv();
     }
     //while ()
       //  SleepEx(100, true);
-
+    while (down == false)
+        SleepEx(100, true);
     closesocket(s_socket);
     WSACleanup();
 }
